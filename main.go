@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/go-chi/chi"
@@ -34,7 +37,7 @@ type (
 	todo struct {
 		ID        string    `json:"id,omitempty"`
 		Title     string    `json:"title"`
-		Completed string    `json:"completed"`
+		Completed bool    `json:"completed"`
 		createdAt time.Time `json:"created_at"`
 	}
 )
@@ -47,7 +50,48 @@ func init () {
 	db = sess.DB(dbName)
 }
 
+func homeHandler (w http.ResponseWriter,r *http.Request){
+	err := rnd.Template(w,http.StatusOK,[]string{"/static/home.tpl"},nil)
+	checkError(err)
+}
+func fetchTodos(w http.ResponseWriter ,r *http.Request){
+todos := []todoModel{}
+if err := db.C(collectionName).Find(bson.M{}).All(&todos);err!=nil{
+checkError(err)
+rnd.JSON(w, http.StatusProcessing,renderer.M{
+	"message":"Failed to fetch todo",
+	"error":err,
+})
+return
+}
+todoList := []todo{}
+
+for _,t :=range todos {
+	todoList = append(todoList, todo{
+		ID: t.ID.Hex(),
+		Title: t.Title,
+		Completed: t.Completed,
+		createdAt: t.createdAt,
+	})
+}
+rnd.JSON(w,http.StatusOK,renderer.M{
+	"data":todoList,
+})
+}
+
+func createTodo(){
+
+}
+func updateTodo(){
+
+}
+func deleteTodo(){
+
+}
+
 func main () {
+stopChan := make(chan os.Signal)
+signal.Notify(stopChan,os.Interrupt)
 r := chi.NewRouter()
 r.Use(middleware.Logger)
 r.Get("/",homeHandler)
@@ -67,17 +111,27 @@ go func ()  {
 		log.Printf("listen : %s \n",err)
 	}
 }()
+<-stopChan
+log.Println("shutting down server")
+ctx,cancel :=context.WithTimeout(context.Background(),5*time.Second)
+srv.Shutdown(ctx)
+defer cancel(
+)
+
+
+
 }
 
 func todoHandlers () http.Handler {
 rg := chi.NewRouter()
-rg.Group(func(r chi.Router) {
+return rg.Group(func(r chi.Router) {
 	r.Get("/",fetchTodos)
-	r.Post("/",createTodo)
-	r.Put("/{id}",updateTodo)
-	r.Delete("/{id}",deleteTodo)
+	// r.Post("/",createTodo)
+	// r.Put("/{id}",updateTodo)
+	// r.Delete("/{id}",deleteTodo)
 })
 }
+
 
 
 func checkError (err error) {
