@@ -22,7 +22,7 @@ var rnd *renderer.Render
 var db *mgo.Database
 
 const (
-	hostName		string ="localhost:27017"
+	hostName		string ="mongodb://database:27017"
 	dbName			string="demo_todo"
 	collectionName 	string = "todo"
 	port 			string = ":9000"
@@ -53,7 +53,7 @@ func init () {
 }
 
 func homeHandler (w http.ResponseWriter,r *http.Request){
-	err := rnd.Template(w,http.StatusOK,[]string{"/static/home.tpl"},nil)
+	err := rnd.Template(w,http.StatusOK,[]string{"./static/home.tpl"},nil)
 	checkError(err)
 }
 func fetchTodos(w http.ResponseWriter ,r *http.Request){
@@ -113,7 +113,37 @@ rnd.JSON(w,http.StatusCreated,renderer.M{
 })
 
 }
-func updateTodo(){
+func updateTodo(w http.ResponseWriter,r *http.Request){
+	id := strings.TrimSpace(chi.URLParam(r,"id"))
+	if !bson.IsObjectIdHex(id){
+		rnd.JSON(w,http.StatusProcessing,renderer.M{
+			"message":"Todo with that id does not exists",
+		})
+		return
+	}
+	var t todo
+	if err:=json.NewDecoder(r.Body).Decode(&t);err!=nil{
+		rnd.JSON(w,http.StatusProcessing,err)
+		return
+	}
+
+	if t.Title==""{
+		rnd.JSON(w,http.StatusBadRequest,renderer.M{
+			"message":"the title field id required",
+		})
+		return
+	}
+
+	if err:=db.C(collectionName).Update(
+		bson.M{" _id":bson.ObjectIdHex(id)},
+		bson.M{"title":t.Title,"completed":t.Completed},
+	);err!=nil{
+		rnd.JSON(w,http.StatusProcessing,renderer.M{
+			"message":"failed to update todo",
+			"error":err,
+		})
+		return
+	}
 
 }
 func deleteTodo(w http.ResponseWriter,r *http.Request){
@@ -164,8 +194,8 @@ go func ()  {
 log.Println("shutting down server")
 ctx,cancel :=context.WithTimeout(context.Background(),5*time.Second)
 srv.Shutdown(ctx)
-defer cancel(
-)
+defer cancel()
+log.Println("stoped successfully")
 
 
 
@@ -175,9 +205,9 @@ func todoHandlers () http.Handler {
 rg := chi.NewRouter()
 return rg.Group(func(r chi.Router) {
 	r.Get("/",fetchTodos)
-	// r.Post("/",createTodo)
-	// r.Put("/{id}",updateTodo)
-	// r.Delete("/{id}",deleteTodo)
+	r.Post("/",createTodo)
+	r.Put("/{id}",updateTodo)
+	r.Delete("/{id}",deleteTodo)
 })
 }
 
